@@ -30,6 +30,19 @@ load_dotenv(dotenv_path=_ENV_PATH, override=True)
 # (from .env) is the key that's used.
 os.environ.pop("GEMINI_API_KEY", None)
 
+# On machines with a corporate gcloud login (an Application Default Credentials
+# file under ~/.config/gcloud, or GOOGLE_APPLICATION_CREDENTIALS set), the
+# Gemini client will silently prefer those OAuth credentials over our API key
+# and fail with `401 UNAUTHENTICATED / ACCESS_TOKEN_TYPE_UNSUPPORTED`. Drop the
+# ADC env pointer and pass the key explicitly below so API-key auth always wins.
+os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+_GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+if not _GOOGLE_API_KEY:
+    raise RuntimeError(
+        "GOOGLE_API_KEY is not set. Add it to .env (free key: "
+        "https://aistudio.google.com/apikey) and restart the kernel."
+    )
+
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -45,8 +58,10 @@ _limiter = InMemoryRateLimiter(requests_per_second=0.2, check_every_n_seconds=0.
 # disable_streaming=True works around a bug where streamed responses can
 # drop tool-call data; this agent calls tools constantly, so streaming
 # stays off.
-model = ChatGoogleGenerativeAI(model="gemini-flash-lite-latest", temperature=0, disable_streaming=True, rate_limiter=_limiter)
-sub_agent_model = ChatGoogleGenerativeAI(model="gemini-flash-lite-latest", temperature=0, disable_streaming=True, rate_limiter=_limiter)
+# google_api_key + transport="rest" force API-key auth over any discoverable
+# gcloud/ADC OAuth credentials (see the GOOGLE_APPLICATION_CREDENTIALS note above).
+model = ChatGoogleGenerativeAI(model="gemini-flash-lite-latest", temperature=0, disable_streaming=True, rate_limiter=_limiter, google_api_key=_GOOGLE_API_KEY, transport="rest")
+sub_agent_model = ChatGoogleGenerativeAI(model="gemini-flash-lite-latest", temperature=0, disable_streaming=True, rate_limiter=_limiter, google_api_key=_GOOGLE_API_KEY, transport="rest")
 
 # For higher-quality steps, bump to the full flash tier (tighter free RPD):
 # model = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0, rate_limiter=_limiter)
